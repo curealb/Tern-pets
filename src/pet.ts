@@ -119,6 +119,7 @@ let frameTimer: Timer | null = null;
 let frameTimerCtx: ExtensionContext | null = null;
 let requestRender: (() => void) | null = null;
 let widget: PetWidget | null = null;
+let activeTheme: Theme | null = null;
 
 // One animation cycle's worth of sprites, LRU-bounded: a repaint that did not
 // advance the frame reuses its Image instead of re-encoding SIXEL, while a long
@@ -385,36 +386,50 @@ function currentImage(theme: Theme): Image {
 	return image;
 }
 
+/** Copy module state onto the live widget; no re-registration. */
+function applyWidgetState(theme: Theme): void {
+	const ctx = ctxRef;
+	if (ctx === null || widget === null) return;
+	const img = currentImage(theme);
+	const cols = imageCellWidth();
+	widget.image = img;
+	widget.imageCols = cols;
+	widget.offset = offsetCells;
+	widget.setTheme(theme);
+	widget.panel = usagePanel();
+	widget.linkLabel = !isNativeRendering() && ctx.ui.getLinkClicksAvailable();
+	const maxOff = Math.max(0, widget.lastCols - widget.imageCols);
+	const liveOff = Math.min(Number.isFinite(offsetCells) ? offsetCells : maxOff, maxOff);
+	widget.panelLeft = liveOff > maxOff / 2;
+}
+
 /** Re-render the widget + status line from current state. */
 function repaint(): void {
 	const ctx = ctxRef;
 	if (!ctx || !ctx.hasUI) return;
 	if (!shown) {
 		ctx.ui.setWidget("shinosawa", undefined);
+		widget = null;
 		return;
 	}
-	ctx.ui.setWidget(
-		"shinosawa",
-		(tui, theme) => {
-			requestRender = () => tui.requestRender();
-			const img = currentImage(theme);
-			const cols = imageCellWidth();
-			if (widget === null) widget = new PetWidget(img, cols, offsetCells);
-			else {
-				widget.image = img;
-				widget.imageCols = cols;
-				widget.offset = offsetCells;
-			}
-			widget.setTheme(theme);
-			widget.panel = usagePanel();
-			widget.linkLabel = !isNativeRendering() && ctx.ui.getLinkClicksAvailable();
-			const maxOff = Math.max(0, widget.lastCols - widget.imageCols);
-			const liveOff = Math.min(Number.isFinite(offsetCells) ? offsetCells : maxOff, maxOff);
-			widget.panelLeft = liveOff > maxOff / 2;
-			return widget;
-		},
-		{ placement: "aboveEditor" },
-	);
+	// Register once, then mutate in place: re-setting the widget every animation
+	// frame tears down the native node tree and can drop clicks aimed at it.
+	if (widget !== null && activeTheme !== null && requestRender !== null) {
+		applyWidgetState(activeTheme);
+		requestRender();
+	} else {
+		ctx.ui.setWidget(
+			"shinosawa",
+			(tui, theme) => {
+				requestRender = () => tui.requestRender();
+				activeTheme = theme;
+				if (widget === null) widget = new PetWidget(currentImage(theme), imageCellWidth(), offsetCells);
+				applyWidgetState(theme);
+				return widget;
+			},
+			{ placement: "aboveEditor" },
+		);
+	}
 	ctx.ui.setStatus("shinosawa", infoLine());
 }
 
