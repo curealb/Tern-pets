@@ -330,22 +330,6 @@ class PetWidget implements Component {
 		};
 		const children = base.c!.slice();
 		children[this.#imageIndex] = { ...slotCol, c: [clickable] } as NativeNode;
-		// A text node does not change with the animation frames, so this is the
-		// reliable click target when the terminal drops clicks on the sprite.
-		if (this.linkLabel) {
-			const linkIndex = this.#imageIndex + 2;
-			const linkSlot = children[linkIndex];
-			if (linkSlot !== undefined && "k" in linkSlot && linkSlot.k === "col") {
-				const linkCol = linkSlot as Extract<NativeNode, { k: "col" }>;
-				const label = linkCol.c?.[0];
-				if (label !== undefined && "k" in label && label.k === "text") {
-					children[linkIndex] = {
-						...linkCol,
-						c: [{ ...label, p: { ...label.p, actions: { ...label.p?.actions, click: "usage" } } }],
-					} as NativeNode;
-				}
-			}
-		}
 		return { ...base, c: children } as NativeNode;
 	}
 
@@ -413,9 +397,7 @@ function applyWidgetState(theme: Theme): void {
 	widget.offset = offsetCells;
 	widget.setTheme(theme);
 	widget.panel = usagePanel();
-	// Native: the label is the stable click target, but hide it while the panel
-	// is open so it does not duplicate the panel's own "用量" row.
-	widget.linkLabel = isNativeRendering() ? widget.panel === null : ctx.ui.getLinkClicksAvailable();
+	widget.linkLabel = !isNativeRendering() && ctx.ui.getLinkClicksAvailable();
 	const maxOff = Math.max(0, widget.lastCols - widget.imageCols);
 	const liveOff = Math.min(Number.isFinite(offsetCells) ? offsetCells : maxOff, maxOff);
 	widget.panelLeft = liveOff > maxOff / 2;
