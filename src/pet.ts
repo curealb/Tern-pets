@@ -642,7 +642,11 @@ function usagePanel(): UsagePanelData | null {
 	const hint = peakValleyHint(now);
 	const peak: UsagePanelData["peak"] =
 		hint === null ? null : { text: hint, tone: isDeepseekPeak(now) ? "warning" : "success" };
-	if (summary === null && balance === null && peak === null) return null;
+	if (summary === null && balance === null && peak === null) {
+		// First click before the balance fetch settles: still render the panel
+		// now; the next repaint replaces the placeholder.
+		return { usage: null, balance: { label: "用量", value: "…" }, peak: null };
+	}
 	return { usage: summary, balance, peak };
 }
 
@@ -770,7 +774,8 @@ function showUsage(): void {
 	// Paint the panel with the current (cached) frame first: a fresh SIXEL
 	// encode for the hop can otherwise hold the whole surface update back.
 	repaint();
-	void refreshBalance();
+	if (ctx) ctx.setTimeout(() => void refreshBalance(), 0);
+	else void refreshBalance();
 	if (!ctx) return;
 	const token = ++usageJumpToken;
 	ctx.setTimeout(() => {
@@ -783,7 +788,7 @@ function showUsage(): void {
 			const restore = previous === "runningLeft" || previous === "runningRight" ? "idle" : previous;
 			applyAnimation(restore);
 		}, hold);
-	}, 100);
+	}, 250);
 }
 
 function helpBody(theme: Theme): string {
