@@ -318,7 +318,7 @@ class PetWidget implements Component {
 
 	/** A click on the sprite (Tern native view) opens the usage panel. */
 	handleNativeEvent(event: NativeUiEvent): void {
-		if (event.type === "action" && event.act === "usage") void showUsage();
+		if (event.type === "action" && event.act === "usage") showUsage();
 	}
 }
 
@@ -746,12 +746,12 @@ async function refreshBalance(): Promise<void> {
 	}
 }
 
-/** Open the usage panel beside the pet (same as `/shinosawa usage`). */
-async function showUsage(): Promise<void> {
-	await refreshBalance();
+/** Open the usage panel immediately; refresh the balance in the background. */
+function showUsage(): void {
 	usagePanelUntil = Date.now() + 10_000;
 	walkDir = 0;
 	repaint();
+	void refreshBalance();
 }
 
 // ---------------------------------------------------------------------------
@@ -829,7 +829,7 @@ export default function (pi: ExtensionAPI): void {
 	// through `PetWidget.handleNativeEvent` instead.
 	pi.registerLinkScheme("shinosawa");
 	pi.on("link_activate", (event) => {
-		if (event.url === "shinosawa:usage") void showUsage();
+		if (event.url === "shinosawa:usage") showUsage();
 	});
 
 	pi.on("session_start", (_event, ctx) => {
@@ -950,7 +950,7 @@ export default function (pi: ExtensionAPI): void {
 					break;
 				}
 				case "usage": {
-					await showUsage();
+					showUsage();
 					break;
 				}
 				case "about": {
