@@ -71,6 +71,19 @@ const DISPLAY_NAME = "Shinosawa Hiro";
 const FALLBACK_DESCRIPTION =
 	"A tiny blonde chibi desktop companion based on Shinosawa Hiro, with amber eyes and a white hoodie.";
 
+const HELP_TEXT = [
+	"Shinosawa Hiro — 用法",
+	"",
+	"/shinosawa                 显示 / 隐藏",
+	"/shinosawa show | hide     显示 / 隐藏",
+	"/shinosawa mood [name]     列出动画 / 固定动画（auto 恢复）",
+	"/shinosawa size <32..192>  设置像素大小",
+	"/shinosawa place <left|center|right|wander>",
+	"/shinosawa usage           显示用量面板（10 秒）",
+	"/shinosawa about           角色信息",
+	"/shinosawa --help, -h      显示本帮助",
+].join("\n");
+
 // ---------------------------------------------------------------------------
 // Shared state (process-wide; the pet is decorative, so per-session memory is
 // an accepted trade-off). Subagent sessions never mutate it — see the
@@ -900,6 +913,12 @@ export default function (pi: ExtensionAPI): void {
 			}
 
 			switch (cmd) {
+				case "--help":
+				case "-h":
+				case "help": {
+					ctx.ui.notify(HELP_TEXT, "info");
+					break;
+				}
 				case "show":
 					shown = true;
 					repaint();
@@ -964,10 +983,7 @@ export default function (pi: ExtensionAPI): void {
 					break;
 				}
 				default:
-					ctx.ui.notify(
-						"用法: /shinosawa [show|hide|mood <name>|size <px>|place <left|center|right|wander>|usage|about]",
-						"warning",
-					);
+					ctx.ui.notify(`未知命令: ${cmd}\n\n${HELP_TEXT}`, "warning");
 			}
 		},
 	});
