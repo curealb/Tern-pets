@@ -121,10 +121,10 @@ let requestRender: (() => void) | null = null;
 let widget: PetWidget | null = null;
 let activeTheme: Theme | null = null;
 
-// One animation cycle's worth of sprites, LRU-bounded: a repaint that did not
-// advance the frame reuses its Image instead of re-encoding SIXEL, while a long
-// session cannot retain every frame at every size.
-const IMAGE_CACHE_LIMIT = 8;
+// Recent sprites, LRU-bounded: the idle/jumping/fidget poses stay warm so the
+// first usage hop needs no fresh encode, while a long session cannot retain
+// every frame at every size.
+const IMAGE_CACHE_LIMIT = 24;
 const imageCache = new Map<string, Image>();
 
 // ---------------------------------------------------------------------------
@@ -789,7 +789,7 @@ function showUsage(): void {
 	// Paint the panel with the current (cached) frame first: a fresh SIXEL
 	// encode for the hop can otherwise hold the whole surface update back.
 	repaint();
-	if (ctx) ctx.setTimeout(() => void refreshBalance(), 0);
+	if (ctx) ctx.setTimeout(() => void refreshBalance(), 300);
 	else void refreshBalance();
 	if (!ctx) return;
 	const token = ++usageJumpToken;
@@ -930,7 +930,11 @@ export default function (pi: ExtensionAPI): void {
 		turnFailed = false;
 		bubbledThisTurn = false;
 		setAnimation("waving");
-		ctx.setTimeout(() => setAnimation("idle"), 4 * 140);
+		// Warm the jumping frames once so the first usage hop is already cached.
+		ctx.setTimeout(() => {
+			setAnimation("jumping");
+			ctx.setTimeout(() => setAnimation("idle"), 5 * 140 + 200);
+		}, 4 * 140);
 		ctx.setInterval(refreshBalance, 60_000);
 		void refreshBalance();
 		bubble(pi, "你好，我是 Hiro～ 今天也一起加油吧！");
