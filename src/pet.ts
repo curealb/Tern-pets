@@ -59,6 +59,9 @@ const ATLAS: readonly AnimationSpec[] = [
 
 const ANIM_BY_NAME = new Map<string, AnimationSpec>(ATLAS.map((a) => [a.name, a]));
 
+/** Non-negative poses the idle pet may pick from when it fidgets. */
+const FIDGET_ANIMATIONS = ["jumping", "waving", "review"] as const;
+
 // Assets sit next to this module: ../shinosawa/{frames,pet.json}.
 const ASSET_DIR = path.join(import.meta.dir, "..", "shinosawa");
 const FRAMES_DIR = path.join(ASSET_DIR, "frames");
@@ -517,7 +520,7 @@ function autoPilot(now: number): void {
 		return;
 	}
 	nextActionAt = now + idleDelay();
-	const name = Math.random() < 0.5 ? "jumping" : "waving";
+	const name = FIDGET_ANIMATIONS[Math.floor(Math.random() * FIDGET_ANIMATIONS.length)];
 	const hold = (ANIM_BY_NAME.get(name)?.frames ?? 4) * intervalOf(name) + 200;
 	applyAnimation(name);
 	const ctx = ctxRef;
@@ -915,8 +918,10 @@ export default function (pi: ExtensionAPI): void {
 						forcedMood = name;
 						applyAnimation(name);
 						ctx.ui.notify(`mood 已设为 ${name}`, "info");
+					} else if (name === undefined) {
+						ctx.ui.notify(`可用动画: ${ATLAS.map((a) => a.name).join(", ")}`, "info");
 					} else {
-						ctx.ui.notify(`未知 mood: ${name ?? ""}`, "warning");
+						ctx.ui.notify(`未知 mood: ${name}`, "warning");
 					}
 					break;
 				}
