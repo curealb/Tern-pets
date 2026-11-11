@@ -104,6 +104,12 @@ let frameTimerCtx: ExtensionContext | null = null;
 let requestRender: (() => void) | null = null;
 let widget: PetWidget | null = null;
 
+// One animation cycle's worth of sprites, LRU-bounded: a repaint that did not
+// advance the frame reuses its Image instead of re-encoding SIXEL, while a long
+// session cannot retain every frame at every size.
+const IMAGE_CACHE_LIMIT = 8;
+const imageCache = new Map<string, Image>();
+
 // ---------------------------------------------------------------------------
 // Frame loading + rendering
 // ---------------------------------------------------------------------------
@@ -345,6 +351,24 @@ function buildImage(theme: Theme): Image {
 	);
 }
 
+/** Reuse a recent frame's Image; the LRU keeps the current cycle warm. */
+function currentImage(theme: Theme): Image {
+	const key = `${animation}:${frame}:${sizePx}`;
+	const cached = imageCache.get(key);
+	if (cached !== undefined) {
+		imageCache.delete(key);
+		imageCache.set(key, cached);
+		return cached;
+	}
+	const image = buildImage(theme);
+	imageCache.set(key, image);
+	if (imageCache.size > IMAGE_CACHE_LIMIT) {
+		const oldest = imageCache.keys().next().value;
+		if (oldest !== undefined) imageCache.delete(oldest);
+	}
+	return image;
+}
+
 /** Re-render the widget + status line from current state. */
 function repaint(): void {
 	const ctx = ctxRef;
@@ -357,7 +381,7 @@ function repaint(): void {
 		"shinosawa",
 		(tui, theme) => {
 			requestRender = () => tui.requestRender();
-			const img = buildImage(theme);
+			const img = currentImage(theme);
 			const cols = imageCellWidth();
 			if (widget === null) widget = new PetWidget(img, cols, offsetCells);
 			else {
