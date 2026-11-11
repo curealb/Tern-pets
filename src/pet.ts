@@ -115,6 +115,12 @@ const WANDER_HOME_MAX = 16; // wander stays this close to the chosen home side
 
 // Main-session runtime references (populated by the main session_start handler).
 let ctxRef: ExtensionContext | null = null;
+// `--restore` and session switches can hand `session_start` a context without a
+// UI. Keep the newest context that actually has one, so a later headless bind
+// cannot blank the widget or the status line.
+let uiRef: ExtensionContext | null = null;
+let heartbeat: Timer | null = null;
+let heartbeatCtx: ExtensionContext | null = null;
 let frameTimer: Timer | null = null;
 let frameTimerCtx: ExtensionContext | null = null;
 let requestRender: (() => void) | null = null;
@@ -388,7 +394,7 @@ function currentImage(theme: Theme): Image {
 
 /** Copy module state onto the live widget; no re-registration. */
 function applyWidgetState(theme: Theme): void {
-	const ctx = ctxRef;
+	const ctx = uiRef ?? ctxRef;
 	if (ctx === null || widget === null) return;
 	const img = currentImage(theme);
 	const cols = imageCellWidth();
@@ -403,9 +409,19 @@ function applyWidgetState(theme: Theme): void {
 	widget.panelLeft = liveOff > maxOff / 2;
 }
 
+/**
+ * Track the newest main-session context. A UI-less context still supplies
+ * model/usage data, but it must not replace the live UI one used for painting.
+ */
+function adoptContext(ctx: ExtensionContext): void {
+	if (ctx.agent.kind !== "main") return;
+	ctxRef = ctx;
+	if (ctx.hasUI) uiRef = ctx;
+}
+
 /** Re-render the widget + status line from current state. */
 function repaint(): void {
-	const ctx = ctxRef;
+	const ctx = uiRef ?? ctxRef;
 	if (!ctx || !ctx.hasUI) return;
 	if (!shown) {
 		ctx.ui.setWidget("shinosawa", undefined);
@@ -886,12 +902,15 @@ function randomErrorLine(): string {
 	return ERROR_LINES[Math.floor(Math.random() * ERROR_LINES.length)] ?? ERROR_LINES[0];
 }
 
-function bubble(pi: ExtensionAPI, text: string): void {
+function bubble(pi: ExtensionAPI, text: string, deliverAs?: "followUp"): void {
 	if (bubbledThisTurn) return;
 	bubbledThisTurn = true;
 	pi.sendMessage(
 		{ customType: "shinosawa-bubble", content: text, display: true, attribution: "agent" },
-		{ triggerTurn: false },
+		// Without a delivery mode the message steers while a run is streaming,
+		// which aborts the tool in flight. Error bubbles are decorative: queue
+		// them behind the run instead.
+		deliverAs === undefined ? { triggerTurn: false } : { deliverAs, triggerTurn: false },
 	);
 }
 
@@ -925,8 +944,8 @@ export default function (pi: ExtensionAPI): void {
 	});
 
 	pi.on("session_start", (_event, ctx) => {
+		adoptContext(ctx);
 		if (ctx.agent.kind !== "main") return;
-		ctxRef = ctx;
 		turnFailed = false;
 		bubbledThisTurn = false;
 		setAnimation("waving");
@@ -936,11 +955,27 @@ export default function (pi: ExtensionAPI): void {
 			ctx.setTimeout(() => setAnimation("idle"), 5 * 140 + 200);
 		}, 4 * 140);
 		ctx.setInterval(refreshBalance, 60_000);
+		// Re-assert the status line: a restored or switched session can replace
+		// the status-line component after this handler ran, dropping hook text.
+		if (heartbeat !== null && heartbeatCtx !== null) heartbeatCtx.clearTimer(heartbeat);
+		heartbeatCtx = ctx;
+		heartbeat = ctx.setInterval(() => {
+			const ui = uiRef;
+			if (ui === null || !shown) return;
+			ui.ui.setStatus("shinosawa", infoLine());
+		}, 5_000);
 		void refreshBalance();
 		bubble(pi, "你好，我是 Hiro～ 今天也一起加油吧！");
 	});
 
+	pi.on("session_switch", (_event, ctx) => {
+		if (ctx.agent.kind !== "main") return;
+		adoptContext(ctx);
+		repaint();
+	});
+
 	pi.on("turn_start", (_event, ctx) => {
+		adoptContext(ctx);
 		if (ctx.agent.kind !== "main") return;
 		turnFailed = false;
 		bubbledThisTurn = false;
@@ -948,21 +983,24 @@ export default function (pi: ExtensionAPI): void {
 	});
 
 	pi.on("tool_execution_start", (_event, ctx) => {
+		adoptContext(ctx);
 		if (ctx.agent.kind !== "main") return;
 		setAnimation("running");
 	});
 
 	pi.on("tool_result", (event, ctx) => {
+		adoptContext(ctx);
 		if (ctx.agent.kind !== "main") return;
 		if (event.isError) {
 			turnFailed = true;
 			setAnimation("failed");
 			ctx.setTimeout(() => setAnimation("running"), 8 * 140);
-			bubble(pi, randomErrorLine());
+			bubble(pi, randomErrorLine(), "followUp");
 		}
 	});
 
 	pi.on("turn_end", (_event, ctx) => {
+		adoptContext(ctx);
 		if (ctx.agent.kind !== "main") return;
 		if (turnFailed) {
 			setAnimation("failed");
@@ -981,7 +1019,7 @@ export default function (pi: ExtensionAPI): void {
 	pi.registerCommand("shinosawa", {
 		description: "Control the Shinosawa pet",
 		handler: async (args, ctx) => {
-			ctxRef = ctx;
+			adoptContext(ctx);
 			const parts = args.trim().split(/\s+/).filter(Boolean);
 			const cmd = parts[0];
 
