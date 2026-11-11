@@ -1,0 +1,6 @@
+{
+  "name": "omp-pet-shinosawa",
+  "version": "1.0.0",
+  "private": true,
+  "omp": { "extensions": ["./src/pet.ts"] }
+}
