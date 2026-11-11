@@ -108,6 +108,7 @@ let walkDir = 0; // -1 left, 0 standing, 1 right
 let walkTarget = 0; // destination cell for the current short leg
 let nextActionAt = 0; // next autonomous walk/fidget timestamp
 let usagePanelUntil = 0; // transient usage panel shown beside the pet
+let usageJumpToken = 0; // invalidates a pending usage hop on a new click
 const WALK_STEP = 1; // cells advanced per animation tick while roaming
 const WANDER_SPAN = 8; // longest single wandering leg, in cells
 const WANDER_HOME_MAX = 16; // wander stays this close to the chosen home side
@@ -766,8 +767,14 @@ function showUsage(): void {
 	const ctx = ctxRef;
 	usagePanelUntil = Date.now() + 10_000;
 	walkDir = 0;
-	// One celebratory hop when the panel opens; restore the pose it interrupted.
-	if (ctx) {
+	// Paint the panel with the current (cached) frame first: a fresh SIXEL
+	// encode for the hop can otherwise hold the whole surface update back.
+	repaint();
+	void refreshBalance();
+	if (!ctx) return;
+	const token = ++usageJumpToken;
+	ctx.setTimeout(() => {
+		if (token !== usageJumpToken || Date.now() >= usagePanelUntil || forcedMood !== null) return;
 		const previous = animation;
 		setAnimation("jumping");
 		const hold = (ANIM_BY_NAME.get("jumping")?.frames ?? 5) * intervalOf("jumping") + 200;
@@ -776,9 +783,7 @@ function showUsage(): void {
 			const restore = previous === "runningLeft" || previous === "runningRight" ? "idle" : previous;
 			applyAnimation(restore);
 		}, hold);
-	}
-	repaint();
-	void refreshBalance();
+	}, 100);
 }
 
 function helpBody(theme: Theme): string {
