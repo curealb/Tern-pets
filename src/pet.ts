@@ -71,18 +71,17 @@ const DISPLAY_NAME = "Shinosawa Hiro";
 const FALLBACK_DESCRIPTION =
 	"A tiny blonde chibi desktop companion based on Shinosawa Hiro, with amber eyes and a white hoodie.";
 
-const HELP_TEXT = [
-	"Shinosawa Hiro — 用法",
-	"",
-	"/shinosawa                 显示 / 隐藏",
-	"/shinosawa show | hide     显示 / 隐藏",
-	"/shinosawa mood [name]     列出动画 / 固定动画（auto 恢复）",
-	"/shinosawa size <32..192>  设置像素大小",
-	"/shinosawa place <left|center|right|wander>",
-	"/shinosawa usage           显示用量面板（10 秒）",
-	"/shinosawa about           角色信息",
-	"/shinosawa --help, -h      显示本帮助",
-].join("\n");
+const HELP_COL = 26;
+const HELP_ROWS: readonly (readonly [string, string])[] = [
+	["/shinosawa", "显示 / 隐藏"],
+	["/shinosawa show | hide", "显示 / 隐藏"],
+	["/shinosawa mood [name]", "列出动画 / 固定动画（auto 恢复）"],
+	["/shinosawa size <32..192>", "设置像素大小"],
+	["/shinosawa place", "left | center | right | wander"],
+	["/shinosawa usage", "显示用量面板（10 秒）"],
+	["/shinosawa about", "角色信息"],
+	["/shinosawa --help, -h", "显示本帮助"],
+];
 
 // ---------------------------------------------------------------------------
 // Shared state (process-wide; the pet is decorative, so per-session memory is
@@ -764,10 +763,62 @@ async function refreshBalance(): Promise<void> {
 
 /** Open the usage panel immediately; refresh the balance in the background. */
 function showUsage(): void {
+	const ctx = ctxRef;
 	usagePanelUntil = Date.now() + 10_000;
 	walkDir = 0;
+	// One celebratory hop when the panel opens; restore the pose it interrupted.
+	if (ctx) {
+		const previous = animation;
+		setAnimation("jumping");
+		const hold = (ANIM_BY_NAME.get("jumping")?.frames ?? 5) * intervalOf("jumping") + 200;
+		ctx.setTimeout(() => {
+			if (animation !== "jumping") return;
+			const restore = previous === "runningLeft" || previous === "runningRight" ? "idle" : previous;
+			applyAnimation(restore);
+		}, hold);
+	}
 	repaint();
 	void refreshBalance();
+}
+
+function helpBody(theme: Theme): string {
+	const rows = HELP_ROWS.map(([cmd, desc]) => {
+		const padded = cmd.padEnd(HELP_COL);
+		return `${theme.fg("accent", padded)}${theme.fg("muted", desc)}`;
+	});
+	return [theme.fg("accent", "Shinosawa Hiro — 用法"), "", ...rows, "", theme.fg("dim", "Esc / Enter 关闭")].join(
+		"\n",
+	);
+}
+
+/** A dismissible overlay for `/shinosawa --help`. */
+class HelpOverlay implements Component {
+	readonly #text: Text;
+	readonly #done: () => void;
+	#closed = false;
+
+	constructor(theme: Theme, done: () => void) {
+		this.#text = new Text(helpBody(theme), 1, 1);
+		this.#done = done;
+	}
+
+	render(width: number): readonly string[] {
+		return this.#text.render(width);
+	}
+
+	handleInput(data: string): void {
+		if (this.#closed) return;
+		if (data === "\x1b" || data === "\r" || data === "\n" || data === "q" || data === "\x03") {
+			this.#closed = true;
+			this.#done();
+		}
+	}
+}
+
+function showHelp(ctx: ExtensionContext): void {
+	void ctx.ui.custom<void>((_tui, theme, _keybindings, done) => new HelpOverlay(theme, () => done()), {
+		overlay: true,
+	});
 }
 
 // ---------------------------------------------------------------------------
@@ -916,7 +967,7 @@ export default function (pi: ExtensionAPI): void {
 				case "--help":
 				case "-h":
 				case "help": {
-					ctx.ui.notify(HELP_TEXT, "info");
+					showHelp(ctx);
 					break;
 				}
 				case "show":
@@ -983,7 +1034,7 @@ export default function (pi: ExtensionAPI): void {
 					break;
 				}
 				default:
-					ctx.ui.notify(`未知命令: ${cmd}\n\n${HELP_TEXT}`, "warning");
+					ctx.ui.notify(`未知命令: ${cmd}；/shinosawa --help 查看用法`, "warning");
 			}
 		},
 	});
