@@ -11,20 +11,19 @@
 
 要求：omp，并且终端支持原生图片（Tern）或 SIXEL / Kitty。
 
-在 `~/.omp/agent/config.yml` 里把扩展加进去（路径换成你本机的绝对路径）：
-
-```yaml
-extensions:
-  - F:/code/pets/src/pet.ts
-```
-
-保存后执行 `/reload`。只有改动模型窗口等启动期配置时才需要重启 omp。
-
-如果作为包安装，`package.json` 里已经声明：
+作为本地插件链接安装即可；`package.json` 已经声明了入口：
 
 ```json
 { "omp": { "extensions": ["./src/pet.ts"] } }
 ```
+
+```bash
+omp plugin link F:/code/tern-plugins/pets
+```
+
+之后重启 omp（新启用的插件需要重新启动才会加载）。卸载用 `omp plugin uninstall omp-pet-shinosawa`。
+
+不要同时在 `~/.omp/agent/config.yml` 的 `extensions:` 里再写同一个入口：插件入口会自动加载，重复配置没有意义。
 
 ## 命令
 
@@ -116,6 +115,6 @@ package.json
 
 ## 开发
 
-omp 直接加载 `src/pet.ts`，没有构建步骤。改完执行 `/reload`。
+omp 直接加载 `src/pet.ts`，没有构建步骤。改完重启 omp；Windows 上 `/reload` 不保证重新导入改过的模块代码。
 
 动画表在 `src/pet.ts` 的 `ATLAS` 里（行号 0–8 对应 spritesheet 的 9 行），新增帧需要同时放入 `shinosawa/frames/<name>-<n>.png` 并更新 `ATLAS` 的 `frames`。
