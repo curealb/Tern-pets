@@ -413,7 +413,9 @@ function applyWidgetState(theme: Theme): void {
 	widget.offset = offsetCells;
 	widget.setTheme(theme);
 	widget.panel = usagePanel();
-	widget.linkLabel = isNativeRendering() || ctx.ui.getLinkClicksAvailable();
+	// Native: the label is the stable click target, but hide it while the panel
+	// is open so it does not duplicate the panel's own "用量" row.
+	widget.linkLabel = isNativeRendering() ? widget.panel === null : ctx.ui.getLinkClicksAvailable();
 	const maxOff = Math.max(0, widget.lastCols - widget.imageCols);
 	const liveOff = Math.min(Number.isFinite(offsetCells) ? offsetCells : maxOff, maxOff);
 	widget.panelLeft = liveOff > maxOff / 2;
