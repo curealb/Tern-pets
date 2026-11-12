@@ -242,8 +242,6 @@ class PetWidget implements Component {
 	panelLeft = false; // put the panel on the pet's left (pet on the right half)
 	linkLabel = false; // show a clickable "用量" label (plain terminals)
 	lastCols = 0; // last surface width seen, used to clamp motion
-	#statusText = "";
-	#theme: Theme | null = null;
 	readonly #lead = new Spacer(1);
 	readonly #gap = new Spacer(1);
 	readonly #tail = new Spacer(1);
@@ -266,13 +264,7 @@ class PetWidget implements Component {
 	}
 
 	setTheme(theme: Theme): void {
-		this.#theme = theme;
 		this.#panel.setTheme(theme);
-	}
-
-	/** Keep the usage line in sync with the session state (drawn under the sprite). */
-	setStatusLine(text: string): void {
-		this.#statusText = text;
 	}
 
 	/** Rebuild the horizontal layout for a surface `cols` cells wide. */
@@ -323,11 +315,7 @@ class PetWidget implements Component {
 
 	render(width: number): readonly string[] {
 		this.#sync(width);
-		const lines = this.#row.render(width);
-		const status = truncateToWidth(this.#statusText, width);
-		if (status.length === 0) return lines;
-		const theme = this.#theme;
-		return [...lines, theme === null ? status : theme.fg("muted", status)];
+		return this.#row.render(width);
 	}
 
 	describe(cx: DescribeContext): NativeNode | null {
@@ -337,21 +325,16 @@ class PetWidget implements Component {
 		// An `image` clicks to zoom by default, and that default belongs to the
 		// image node itself — a parent's `actions.click` cannot override it. Put
 		// the usage action on the image node so the sprite opens the panel.
-		let imageRow = base;
-		if (slot !== undefined && "k" in slot && slot.k === "col") {
-			const slotCol = slot as Extract<NativeNode, { k: "col" }>;
-			const image = this.image.describe(cx) as Extract<NativeNode, { k: "image" }>;
-			const clickable: typeof image = {
-				...image,
-				p: { ...image.p, actions: { ...image.p?.actions, click: "usage" } },
-			};
-			const children = base.c!.slice();
-			children[this.#imageIndex] = { ...slotCol, c: [clickable] } as NativeNode;
-			imageRow = { ...base, c: children } as NativeNode;
-		}
-		const status = truncateToWidth(this.#statusText, cx.cols);
-		if (status.length === 0) return imageRow;
-		return col([imageRow, text(status, { tone: "muted" })]);
+		if (slot === undefined || !("k" in slot) || slot.k !== "col") return base;
+		const slotCol = slot as Extract<NativeNode, { k: "col" }>;
+		const image = this.image.describe(cx) as Extract<NativeNode, { k: "image" }>;
+		const clickable: typeof image = {
+			...image,
+			p: { ...image.p, actions: { ...image.p?.actions, click: "usage" } },
+		};
+		const children = base.c!.slice();
+		children[this.#imageIndex] = { ...slotCol, c: [clickable] } as NativeNode;
+		return { ...base, c: children } as NativeNode;
 	}
 
 	/** A click on the sprite (Tern native view) opens the usage panel. */
@@ -417,7 +400,6 @@ function applyWidgetState(theme: Theme): void {
 	widget.imageCols = cols;
 	widget.offset = offsetCells;
 	widget.setTheme(theme);
-	widget.setStatusLine(infoLine());
 	widget.panel = usagePanel();
 	widget.linkLabel = !isNativeRendering() && ctx.ui.getLinkClicksAvailable();
 	const maxOff = Math.max(0, widget.lastCols - widget.imageCols);
@@ -462,6 +444,7 @@ function repaint(): void {
 			{ placement: "aboveEditor" },
 		);
 	}
+	ctx.ui.setStatus("shinosawa", infoLine());
 }
 
 // ---------------------------------------------------------------------------
@@ -698,7 +681,6 @@ function usagePanel(): UsagePanelData | null {
 
 function infoLine(): string {
 	const ctx = ctxRef;
-	const model = ctx?.models.current()?.id ?? ctx?.model?.id ?? "?";
 	const usage = ctx?.getContextUsage();
 	const tokens = usage && typeof usage.tokens === "number" ? formatTokens(usage.tokens) : "?";
 	const window =
@@ -706,13 +688,15 @@ function infoLine(): string {
 			? formatTokens(usage.contextWindow)
 			: null;
 	const pct = usage && typeof usage.percent === "number" ? Math.round(usage.percent) : null;
+	// The Tern composer drops the lowest-priority fact (this one) when the
+	// model/path/branch/cost row runs out of space, and the model id is already
+	// on the chip, so keep the text short.
 	let line = `🐾 Hiro · ${window ? `${tokens}/${window}` : tokens} tok`;
 	if (pct !== null) line += ` (${pct}%)`;
-	if (balanceText !== null) line += ` · ${balanceText}`;
+	if (balanceText !== null) line += ` · ${balanceText.replace(/\s*CNY$/i, "")}`;
 	const pv = peakValleyHint(new Date());
 	if (pv !== null) line += pv.startsWith("峰时") ? " · 峰" : " · 谷";
-	line += ` · ${model}`;
-	return truncateToWidth(replaceTabs(line), 100);
+	return truncateToWidth(replaceTabs(line), 60);
 }
 
 /** Human-readable usage from one {@link UsageAmount}-shaped window. */
