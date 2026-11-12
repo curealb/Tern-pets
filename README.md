@@ -11,17 +11,25 @@
 
 要求：omp，并且终端支持原生图片（Tern）或 SIXEL / Kitty。
 
-作为本地插件链接安装即可；`package.json` 已经声明了入口：
+作为插件安装（从 GitHub 拉取，落到 `~/.omp/plugins/node_modules/omp-pet-shinosawa`，不是本地链接）；`package.json` 已经声明了入口：
 
 ```json
 { "omp": { "extensions": ["./src/pet.ts"] } }
 ```
 
 ```bash
+omp plugin install git@github.com:curealb/Tern-pets.git
+```
+
+本地开发时改用链接，改完源码重启 omp 即生效：
+
+```bash
 omp plugin link F:/code/tern-plugins/pets
 ```
 
 之后重启 omp（新启用的插件需要重新启动才会加载）。卸载用 `omp plugin uninstall omp-pet-shinosawa`。
+
+git 安装的是仓库的一个副本，不会跟随本地改动：更新先 push，再 `omp plugin upgrade omp-pet-shinosawa`。
 
 不要同时在 `~/.omp/agent/config.yml` 的 `extensions:` 里再写同一个入口：插件入口会自动加载，重复配置没有意义。
 
