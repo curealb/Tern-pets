@@ -108,7 +108,7 @@ DeepSeek 峰时（UTC，周一至周五）：`01:00–04:00`、`06:00–10:00`�
 - 默认位置：`left`，偏移 0 格。
 - 默认大小：96px；高度按 192×208 的帧比例计算。
 - 用量行是 Tern composer footer 里的一个灰色事实（与模型/路径/分支同一行），文案保持短：`🐾 Hiro · tokens/window tok (pct%) · 余额 … · 峰/谷`；模型名已经在 chip 上，不再重复。Tern 空间不足时会先丢优先级最低的事实（包括这一行）。
-- 图片缓存：最近 24 个 `Image`，LRU 淘汰；不是无限缓存。
+- 图片缓存：最近 24 个 `Image`，LRU 淘汰。图片接入当前 TUI 的 `imageBudget`；重绘复用稳定的 Kitty image/placement ID，换帧、隐藏和组件销毁时释放旧图像，避免残影叠加。
 - 宠物只在主会话生效；子会话不会改动共享状态。
 
 ## 目录
@@ -125,5 +125,7 @@ package.json
 ## 开发
 
 omp 直接加载 `src/pet.ts`，没有构建步骤。改完重启 omp；Windows 上 `/reload` 不保证重新导入改过的模块代码。
+
+协议回归测试使用真实的 OMP 18.20.0 TUI 组件，运行 `bun install` 后执行 `bun test`。覆盖重绘、移动、动画换帧、隐藏、跨 TUI 重建，以及 Kitty Placeholder 和关闭图片后的文本回退。
 
 动画表在 `src/pet.ts` 的 `ATLAS` 里（行号 0–8 对应 spritesheet 的 9 行），新增帧需要同时放入 `shinosawa/frames/<name>-<n>.png` 并更新 `ATLAS` 的 `frames`。

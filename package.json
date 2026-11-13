@@ -2,5 +2,7 @@
   "name": "omp-pet-shinosawa",
   "version": "1.0.0",
   "private": true,
+  "scripts": { "test": "bun test" },
+  "devDependencies": { "@oh-my-pi/pi-tui": "18.20.0" },
   "omp": { "extensions": ["./src/pet.ts"] }
 }

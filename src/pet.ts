@@ -28,7 +28,7 @@ import {
 	truncateToWidth,
 } from "@oh-my-pi/pi-tui";
 import { formatExtensionLink } from "@oh-my-pi/pi-tui/render";
-import type { Component, DescribeContext, NativeNode, NativeUiEvent, RowChild, Theme, TspSpan } from "@oh-my-pi/pi-tui";
+import type { Component, DescribeContext, ImageBudget, NativeNode, NativeUiEvent, RowChild, Theme, TspSpan } from "@oh-my-pi/pi-tui";
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 
 // ---------------------------------------------------------------------------
@@ -130,6 +130,7 @@ let activeTheme: Theme | null = null;
 // every frame at every size.
 const IMAGE_CACHE_LIMIT = 24;
 const imageCache = new Map<string, Image>();
+let imageBudget: ImageBudget | undefined;
 
 // ---------------------------------------------------------------------------
 // Frame loading + rendering
@@ -267,6 +268,10 @@ class PetWidget implements Component {
 		this.#panel.setTheme(theme);
 	}
 
+	dispose(): void {
+		this.image.release();
+	}
+
 	/** Rebuild the horizontal layout for a surface `cols` cells wide. */
 	#sync(cols: number): void {
 		this.lastCols = cols;
@@ -361,6 +366,8 @@ function buildImage(theme: Theme): Image {
 		"image/png",
 		{ fallbackColor: (text) => theme.fg("accent", text) },
 		{
+			// Use the host's lifecycle: anonymous Kitty uploads survive text redraws.
+			budget: imageBudget,
 			maxWidthCells: cols,
 			maxHeightCells: rows,
 			filename: "shinosawa",
@@ -385,7 +392,10 @@ function currentImage(theme: Theme): Image {
 	imageCache.set(key, image);
 	if (imageCache.size > IMAGE_CACHE_LIMIT) {
 		const oldest = imageCache.keys().next().value;
-		if (oldest !== undefined) imageCache.delete(oldest);
+		if (oldest !== undefined) {
+			imageCache.get(oldest)?.release();
+			imageCache.delete(oldest);
+		}
 	}
 	return image;
 }
@@ -396,6 +406,9 @@ function applyWidgetState(theme: Theme): void {
 	if (ctx === null || widget === null) return;
 	const img = currentImage(theme);
 	const cols = imageCellWidth();
+	// Animation frames are separate images. Retire the previous frame even when
+	// the inline-image cap is disabled; the cache can retransmit it on reuse.
+	if (widget.image !== img) widget.image.release();
 	widget.image = img;
 	widget.imageCols = cols;
 	widget.offset = offsetCells;
@@ -422,6 +435,7 @@ function repaint(): void {
 	const ctx = uiRef ?? ctxRef;
 	if (!ctx || !ctx.hasUI) return;
 	if (!shown) {
+		widget?.image.release();
 		ctx.ui.setWidget("shinosawa", undefined);
 		widget = null;
 		return;
@@ -435,6 +449,13 @@ function repaint(): void {
 		ctx.ui.setWidget(
 			"shinosawa",
 			(tui, theme) => {
+				// Cached Images belong to one TUI's budget, including after a restart.
+				if (imageBudget !== tui.imageBudget) {
+					for (const image of imageCache.values()) image.release();
+					imageCache.clear();
+					widget = null;
+					imageBudget = tui.imageBudget;
+				}
 				requestRender = () => tui.requestRender();
 				activeTheme = theme;
 				if (widget === null) widget = new PetWidget(currentImage(theme), imageCellWidth(), offsetCells);
